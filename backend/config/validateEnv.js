@@ -9,7 +9,7 @@ const validateEnv = () => {
     }
   }
   if (!process.env.MONGODB_URI) errors.push('MONGODB_URI is required');
-  if (!process.env.CLIENT_URL) errors.push('CLIENT_URL is required');
+  if (!process.env.CLIENT_URL && !process.env.VERCEL) errors.push('CLIENT_URL is required');
   if (errors.length) throw new Error(`Invalid production configuration: ${errors.join('; ')}`);
 };
 

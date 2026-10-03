@@ -32,17 +32,34 @@ const healthRoutes = require('./routes/health');
 const app = express();
 const httpServer = http.createServer(app);
 const isTest = process.env.NODE_ENV === 'test';
+const isVercel = Boolean(process.env.VERCEL);
 
 app.disable('x-powered-by');
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
 }
 
-['./logs', './uploads'].forEach(directory => {
-  if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
-});
+// Vercel's filesystem is read-only
+if (!isVercel) {
+  ['./logs', './uploads'].forEach(directory => {
+    if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
+  });
+}
 
 app.use(requestContext);
+
+// On Vercel the exported app runs as a function: no listen(), so connect Mongo on first request.
+// ponytail: socket.io and Bull queues need a long-lived process and stay off on Vercel.
+if (isVercel) {
+  let ready = null;
+  app.use((req, res, next) => {
+    ready ||= Promise.resolve().then(validateEnv).then(connectDB).catch(error => {
+      ready = null;
+      throw error;
+    });
+    ready.then(() => next(), next);
+  });
+}
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'same-site' },
   contentSecurityPolicy: {
@@ -59,6 +76,10 @@ app.use(helmet({
 
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
   .split(',').map(origin => origin.trim()).filter(Boolean);
+// Frontend and API share one domain on Vercel; allow that deployment's own URLs
+['VERCEL_URL', 'VERCEL_BRANCH_URL', 'VERCEL_PROJECT_PRODUCTION_URL'].forEach(name => {
+  if (process.env[name]) allowedOrigins.push(`https://${process.env[name]}`);
+});
 app.use(cors({
   origin: (origin, callback) => !origin || allowedOrigins.includes(origin)
     ? callback(null, true)
@@ -143,7 +164,7 @@ const startServer = async () => {
   });
 };
 
-if (!isTest) {
+if (!isTest && !isVercel) {
   startServer().catch(error => {
     logger.error(`Startup failed: ${error.message}`);
     process.exit(1);

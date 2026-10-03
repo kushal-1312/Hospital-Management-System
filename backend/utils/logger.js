@@ -15,14 +15,15 @@ const logger = winston.createLogger({
     new winston.transports.Console({
       format: winston.format.combine(winston.format.colorize(), logFormat)
     }),
-    new winston.transports.File({
+    // Vercel's filesystem is read-only; its log drain captures console output
+    ...(process.env.VERCEL ? [] : [new winston.transports.File({
       filename: path.join(__dirname, '../logs/error.log'),
       level: 'error', maxsize: 5242880, maxFiles: 5
     }),
     new winston.transports.File({
       filename: path.join(__dirname, '../logs/combined.log'),
       maxsize: 5242880, maxFiles: 5
-    })
+    })])
   ]
 });
 

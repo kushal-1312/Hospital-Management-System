@@ -15,7 +15,7 @@ const connectDB = async () => {
     mongoose.connection.on('error', (err) => logger.error(`MongoDB error: ${err.message}`));
   } catch (error) {
     logger.error(`MongoDB connection failed: ${error.message}`);
-    process.exit(1);
+    throw error;
   }
 };
 
