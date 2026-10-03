@@ -1,1 +1,0 @@
-node "$PSScriptRoot\runner.js"
