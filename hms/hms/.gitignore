@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and runtime files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.pid
+*.seed
+
+# Generated output
+build/
+dist/
+coverage/
+.cache/
+
+# User uploads
+uploads/
+
+# Database/runtime artifacts
+.runtime/
+dump.rdb
+appendonly.aof
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+

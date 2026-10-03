@@ -1,0 +1,294 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: medcare
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medcare-config
+  namespace: medcare
+data:
+  NODE_ENV: production
+  PORT: "5000"
+  CLIENT_URL: https://hms.example-hospital.com
+  REDIS_PORT: "6379"
+  REDIS_REQUIRED: "true"
+  RATE_LIMIT_MAX: "1000"
+  RATE_LIMIT_WINDOW: "15"
+  MONGODB_MAX_POOL_SIZE: "40"
+  MONGODB_MIN_POOL_SIZE: "5"
+  TRUST_PROXY_HOPS: "1"
+  LOG_LEVEL: info
+  JOB_CONCURRENCY: "5"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medcare-api
+  namespace: medcare
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: medcare-api }
+  template:
+    metadata:
+      labels: { app: medcare-api }
+    spec:
+      terminationGracePeriodSeconds: 30
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app: medcare-api }
+      containers:
+        - name: api
+          image: ghcr.io/your-org/medcare-api@sha256:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 5000 }
+          envFrom:
+            - configMapRef: { name: medcare-config }
+          env:
+            - { name: MONGODB_URI, valueFrom: { secretKeyRef: { name: medcare-secrets, key: mongodb-uri } } }
+            - { name: REDIS_HOST, valueFrom: { secretKeyRef: { name: medcare-secrets, key: redis-host } } }
+            - { name: REDIS_PASSWORD, valueFrom: { secretKeyRef: { name: medcare-secrets, key: redis-password } } }
+            - { name: JWT_SECRET, valueFrom: { secretKeyRef: { name: medcare-secrets, key: jwt-secret } } }
+            - { name: JWT_REFRESH_SECRET, valueFrom: { secretKeyRef: { name: medcare-secrets, key: jwt-refresh-secret } } }
+            - { name: AUDIT_HMAC_KEY, valueFrom: { secretKeyRef: { name: medcare-secrets, key: audit-hmac-key } } }
+            - { name: METRICS_TOKEN, valueFrom: { secretKeyRef: { name: medcare-secrets, key: metrics-token } } }
+            - { name: SMTP_HOST, valueFrom: { secretKeyRef: { name: medcare-secrets, key: smtp-host } } }
+            - { name: SMTP_USER, valueFrom: { secretKeyRef: { name: medcare-secrets, key: smtp-user } } }
+            - { name: SMTP_PASS, valueFrom: { secretKeyRef: { name: medcare-secrets, key: smtp-pass } } }
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 250m, memory: 384Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: logs, mountPath: /app/logs }
+            - { name: uploads, mountPath: /app/uploads }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: logs, emptyDir: {} }
+        - { name: uploads, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: medcare-api
+  namespace: medcare
+spec:
+  selector: { app: medcare-api }
+  ports:
+    - { name: http, port: 5000, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medcare-worker
+  namespace: medcare
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: medcare-worker }
+  template:
+    metadata:
+      labels: { app: medcare-worker }
+    spec:
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: worker
+          image: ghcr.io/your-org/medcare-api@sha256:replace-me
+          args: ["npm", "run", "worker"]
+          envFrom:
+            - configMapRef: { name: medcare-config }
+          env:
+            - { name: MONGODB_URI, valueFrom: { secretKeyRef: { name: medcare-secrets, key: mongodb-uri } } }
+            - { name: REDIS_HOST, valueFrom: { secretKeyRef: { name: medcare-secrets, key: redis-host } } }
+            - { name: REDIS_PASSWORD, valueFrom: { secretKeyRef: { name: medcare-secrets, key: redis-password } } }
+            - { name: JWT_SECRET, valueFrom: { secretKeyRef: { name: medcare-secrets, key: jwt-secret } } }
+            - { name: JWT_REFRESH_SECRET, valueFrom: { secretKeyRef: { name: medcare-secrets, key: jwt-refresh-secret } } }
+            - { name: AUDIT_HMAC_KEY, valueFrom: { secretKeyRef: { name: medcare-secrets, key: audit-hmac-key } } }
+            - { name: SMTP_HOST, valueFrom: { secretKeyRef: { name: medcare-secrets, key: smtp-host } } }
+            - { name: SMTP_USER, valueFrom: { secretKeyRef: { name: medcare-secrets, key: smtp-user } } }
+            - { name: SMTP_PASS, valueFrom: { secretKeyRef: { name: medcare-secrets, key: smtp-pass } } }
+          resources:
+            requests: { cpu: 200m, memory: 384Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: logs, mountPath: /app/logs }
+            - { name: uploads, mountPath: /app/uploads }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: logs, emptyDir: {} }
+        - { name: uploads, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: medcare-web
+  namespace: medcare
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app: medcare-web }
+  template:
+    metadata:
+      labels: { app: medcare-web }
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/your-org/medcare-web@sha256:replace-me
+          ports:
+            - { name: http, containerPort: 8080 }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 192Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: { drop: ["ALL"] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: medcare-web
+  namespace: medcare
+spec:
+  selector: { app: medcare-web }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: medcare-api
+  namespace: medcare
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: medcare-api }
+  minReplicas: 3
+  maxReplicas: 20
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - { type: Percent, value: 100, periodSeconds: 60 }
+        - { type: Pods, value: 4, periodSeconds: 60 }
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - { type: Percent, value: 25, periodSeconds: 60 }
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 65 }
+    - type: Resource
+      resource:
+        name: memory
+        target: { type: Utilization, averageUtilization: 75 }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: medcare-api
+  namespace: medcare
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: { app: medcare-api }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: medcare-web
+  namespace: medcare
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: medcare-web }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: medcare
+  namespace: medcare
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "65"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "65"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [hms.example-hospital.com]
+      secretName: medcare-tls
+  rules:
+    - host: hms.example-hospital.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: { name: medcare-api, port: { number: 5000 } }
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service: { name: medcare-api, port: { number: 5000 } }
+          - path: /health
+            pathType: Prefix
+            backend:
+              service: { name: medcare-api, port: { number: 5000 } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: medcare-web, port: { number: 80 } }

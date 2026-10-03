@@ -1,0 +1,163 @@
+name: MedCare HMS — CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '24.x'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: medcare-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # JOB 1: Backend Tests
+  # ─────────────────────────────────────────────────────────────
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run full test suite with coverage
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci_jwt_secret_min_32_characters_xyz_abc
+          JWT_EXPIRE: 15m
+          JWT_REFRESH_SECRET: ci_refresh_secret_min_32_chars_xyz
+          JWT_REFRESH_EXPIRE: 7d
+          MAX_LOGIN_ATTEMPTS: '5'
+          LOCKOUT_DURATION: '15'
+          RESET_TOKEN_EXPIRE: '10'
+          TOTP_APP_NAME: MedCare-CI
+          CLIENT_URL: http://localhost:3000
+          REDIS_HOST: '127.0.0.1'
+        run: npm run test:cov
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 2: Frontend Build Check
+  # ─────────────────────────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build production bundle
+        working-directory: frontend
+        env:
+          CI: false          # don't treat warnings as errors
+          VITE_API_URL: /api
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 3: Security Audit
+  # ─────────────────────────────────────────────────────────────
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Audit backend dependencies
+        working-directory: backend
+        run: npm audit --audit-level=high
+
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 4: Deploy to Render (backend) — only on main branch push
+  # ─────────────────────────────────────────────────────────────
+  deploy-backend:
+    name: Deploy Backend → Render
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Trigger Render Deploy Hook
+        run: |
+          echo "Deploying backend to Render..."
+          curl -s -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print('Deploy triggered:', d.get('deploy',{}).get('id','unknown'))"
+        # Set RENDER_BACKEND_DEPLOY_HOOK in GitHub repo Secrets.
+        # Get it from Render Dashboard → Service → Settings → Deploy Hook.
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 5: Deploy frontend to Vercel — only on main push
+  # ─────────────────────────────────────────────────────────────
+  deploy-frontend:
+    name: Deploy Frontend → Vercel
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: frontend
+          vercel-args: '--prod'
