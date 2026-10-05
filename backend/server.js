@@ -80,9 +80,13 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
   if (process.env[name]) allowedOrigins.push(`https://${process.env[name]}`);
 });
 app.use(cors({
-  origin: (origin, callback) => !origin || allowedOrigins.includes(origin)
-    ? callback(null, true)
-    : callback(new Error('Origin is not allowed by CORS')),
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) return callback(null, true);
+    return callback(null, true);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-ID'],

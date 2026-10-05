@@ -32,7 +32,7 @@ const errorHandler = (err, req, res, next) => {
   }
 
   const statusCode = error.statusCode || 500;
-  const message = error.isOperational ? error.message : 'Internal server error.';
+  const message = error.isOperational ? error.message : (err.message || error.message || 'Internal server error.');
 
   res.status(statusCode).json({
     success: false,

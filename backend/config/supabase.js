@@ -1,15 +1,13 @@
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('../utils/logger');
 
-const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder-project.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || 'placeholder-key';
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 const isConfigured = Boolean(
-  process.env.SUPABASE_URL &&
-  !process.env.SUPABASE_URL.includes('placeholder') &&
-  !process.env.SUPABASE_URL.includes('your-project') &&
-  (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY) &&
-  !process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('your-supabase')
+  supabaseUrl &&
+  !supabaseUrl.includes('placeholder') &&
+  supabaseKey
 );
 
 const supabase = createClient(supabaseUrl, supabaseKey, {
