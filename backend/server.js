@@ -8,7 +8,6 @@ const cors = require('cors');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const mongoose = require('mongoose');
 
 const connectDB = require('./config/database');
 const validateEnv = require('./config/validateEnv');
@@ -147,7 +146,7 @@ const shutdown = async (signal, exitCode = 0) => {
   const forceTimer = setTimeout(() => process.exit(1), 15_000);
   forceTimer.unref();
   httpServer.close(async () => {
-    await Promise.allSettled([closeSocket(), closeQueues(), closeRedis(), mongoose.disconnect()]);
+    await Promise.allSettled([closeSocket(), closeQueues(), closeRedis()]);
     logger.info('Graceful shutdown complete');
     process.exit(exitCode);
   });

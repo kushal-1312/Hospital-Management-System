@@ -1,73 +1,60 @@
-const mongoose = require('mongoose');
+const SupabaseModel = require('./SupabaseModel');
+const Sequence = require('./Sequence');
+const { supabase } = require('../config/supabase');
 
-const AppointmentSchema = new mongoose.Schema({
-  appointmentId: { type: String, unique: true },
-  patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
-  doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  patientName: String, doctorName: String,
-  date: { type: Date, required: true },
-  timeSlot: { start: { type: String, required: true }, end: { type: String, required: true } },
-  duration: { type: Number, default: 30 },
-  type: { type: String, enum: ['consultation','follow-up','emergency','routine-checkup','procedure'], default: 'consultation' },
-  reason: String, notes: String,
-  status: { type: String, enum: ['pending','confirmed','completed','cancelled','no-show'], default: 'pending' },
-  diagnosis: String, prescription: String, followUpDate: Date,
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  cancellationReason: String
-}, { timestamps: true });
+class Appointment extends SupabaseModel {
+  static tableName = 'appointments';
 
-// Keep active appointments unique while allowing a cancelled/no-show slot
-// to be booked again. This matches checkDoubleBooking() below.
-AppointmentSchema.index(
-  { doctor: 1, date: 1, 'timeSlot.start': 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      status: { $in: ['pending', 'confirmed', 'completed'] }
-    }
+  constructor(data = {}, isExisting = false) {
+    super(data, isExisting);
+    this.type = this.type || 'consultation';
+    this.status = this.status || 'pending';
+    this.duration = Number(this.duration) || 30;
+    this.timeSlot = this.timeSlot || { start: '09:00', end: '09:30' };
   }
-);
-AppointmentSchema.index({ patient: 1 });
-AppointmentSchema.index({ date: 1 });
-AppointmentSchema.index({ doctor: 1, date: 1, status: 1 });
-AppointmentSchema.index({ status: 1, date: 1 });
 
-AppointmentSchema.pre('save', async function (next) {
-  try {
+  async _preSave() {
     if (!this.appointmentId) {
-      const Sequence = require('./Sequence');
-      const latest = await mongoose.model('Appointment')
-        .findOne({ appointmentId: /^APT-\d+$/ })
-        .sort({ appointmentId: -1 })
-        .select('appointmentId')
-        .lean();
-      const initialValue = latest ? Number(latest.appointmentId.slice(4)) : 0;
-      const nextValue = await Sequence.next('appointmentId', initialValue);
-      this.appointmentId = `APT-${String(nextValue).padStart(5, '0')}`;
+      try {
+        const { data: latest } = await supabase
+          .from('appointments')
+          .select('appointment_id')
+          .order('appointment_id', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const initialValue = latest?.appointment_id ? Number(latest.appointment_id.slice(4)) : 0;
+        const nextVal = await Sequence.next('appointmentId', initialValue);
+        this.appointmentId = `APT-${String(nextVal).padStart(5, '0')}`;
+      } catch (err) {
+        this.appointmentId = `APT-${String(Date.now()).slice(-5)}`;
+      }
     }
-    next();
-  } catch (err) {
-    next(err);
   }
-});
 
-AppointmentSchema.statics.checkDoubleBooking = async function (doctorId, date, startTime, endTime, excludeId = null) {
-  const d = new Date(date);
-  const start = new Date(d.setHours(0,0,0,0));
-  const end = new Date(d.setHours(23,59,59,999));
-  const query = {
-    doctor: doctorId,
-    date: { $gte: start, $lte: end },
-    status: { $nin: ['cancelled','no-show'] },
-    $or: [
-      { 'timeSlot.start': { $lte: startTime }, 'timeSlot.end': { $gt: startTime } },
-      { 'timeSlot.start': { $lt: endTime }, 'timeSlot.end': { $gte: endTime } },
-      { 'timeSlot.start': { $gte: startTime }, 'timeSlot.end': { $lte: endTime } }
-    ]
-  };
-  if (excludeId) query._id = { $ne: excludeId };
-  return this.findOne(query);
-};
+  static async checkDoubleBooking(doctorId, date, startTime, endTime, excludeId = null) {
+    const d = new Date(date);
+    const startOfDay = new Date(d.setHours(0, 0, 0, 0)).toISOString();
+    const endOfDay = new Date(d.setHours(23, 59, 59, 999)).toISOString();
 
-module.exports = mongoose.model('Appointment', AppointmentSchema);
+    const existingAppointments = await this.find({
+      doctor: doctorId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      status: { $nin: ['cancelled', 'no-show'] }
+    }).lean();
+
+    return existingAppointments.find(apt => {
+      if (excludeId && String(apt.id || apt._id) === String(excludeId)) return false;
+      const slot = apt.timeSlot || {};
+      const s = slot.start;
+      const e = slot.end;
+      if (!s || !e) return false;
+      return (
+        (s <= startTime && e > startTime) ||
+        (s < endTime && e >= endTime) ||
+        (s >= startTime && e <= endTime)
+      );
+    }) || null;
+  }
+}
+
+module.exports = Appointment;

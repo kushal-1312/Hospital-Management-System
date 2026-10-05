@@ -1,12 +1,12 @@
 const express = require('express');
-const mongoose = require('mongoose');
+const { isReady: isDatabaseReady } = require('../config/supabase');
 const { isConnected: isRedisConnected } = require('../cache/redisClient');
 
 const router = express.Router();
 const startedAt = new Date();
 
 const snapshot = () => {
-  const databaseReady = mongoose.connection.readyState === 1;
+  const databaseReady = isDatabaseReady();
   const cacheReady = isRedisConnected();
   const redisRequired = process.env.REDIS_REQUIRED === 'true';
   const ready = databaseReady && (!redisRequired || cacheReady);
@@ -18,7 +18,7 @@ const snapshot = () => {
     uptimeSeconds: Math.round(process.uptime()),
     checks: {
       api: 'up',
-      database: databaseReady ? 'connected' : 'unavailable',
+      database: databaseReady ? 'connected' : (process.env.SUPABASE_URL?.includes('placeholder') ? 'standby' : 'unavailable'),
       cache: cacheReady ? 'connected' : 'unavailable'
     }
   };

@@ -1,21 +1,16 @@
-const mongoose = require('mongoose');
+const { testConnection } = require('./supabase');
 const logger = require('../utils/logger');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      maxPoolSize: Number(process.env.MONGODB_MAX_POOL_SIZE) || 50,
-      minPoolSize: Number(process.env.MONGODB_MIN_POOL_SIZE) || 5,
-      serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS) || 5000,
-      maxIdleTimeMS: 60_000,
-      retryWrites: true,
-    });
-    logger.info(`MongoDB Connected: ${conn.connection.host}`);
-    mongoose.connection.on('disconnected', () => logger.warn('MongoDB disconnected'));
-    mongoose.connection.on('error', (err) => logger.error(`MongoDB error: ${err.message}`));
+    const success = await testConnection();
+    if (!success) {
+      logger.warn('Database connection started in offline/standby mode. Provide valid Supabase credentials in .env to connect.');
+    }
+    return success;
   } catch (error) {
-    logger.error(`MongoDB connection failed: ${error.message}`);
-    throw error;
+    logger.error(`Database connection check error: ${error.message}`);
+    return false;
   }
 };
 

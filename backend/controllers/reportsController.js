@@ -75,7 +75,7 @@ const getDoctorPerformanceReport = async (req, res, next) => {
         if (startDate) dateMatch.date.$gte = new Date(startDate);
         if (endDate)   dateMatch.date.$lte = new Date(new Date(endDate).setHours(23,59,59));
       }
-      if (doctorId) dateMatch.doctor = require('mongoose').Types.ObjectId.createFromHexString(doctorId);
+      if (doctorId) dateMatch.doctor = doctorId;
 
       const [apptStats, doctors] = await Promise.all([
         Appointment.aggregate([
@@ -101,7 +101,7 @@ const getDoctorPerformanceReport = async (req, res, next) => {
         ]),
         // Patient load per doctor
         Patient.aggregate([
-          ...(doctorId ? [{ $match: { assignedDoctor: require('mongoose').Types.ObjectId.createFromHexString(doctorId) } }] : []),
+          ...(doctorId ? [{ $match: { assignedDoctor: doctorId } }] : []),
           { $group: { _id: '$assignedDoctor', patientCount: { $sum: 1 }, activeCount: { $sum: { $cond: [{ $eq: ['$status','active'] }, 1, 0] } } } },
           { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'doctor' } },
           { $unwind: { path: '$doctor', preserveNullAndEmpty: true } },

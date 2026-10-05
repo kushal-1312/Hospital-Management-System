@@ -1,5 +1,3 @@
-require('dotenv').config({ quiet: true });
-const mongoose = require('mongoose');
 const { Worker } = require('bullmq');
 const connectDB = require('../config/database');
 const validateEnv = require('../config/validateEnv');
@@ -128,7 +126,7 @@ const shutdown = async signal => {
   closing = true;
   logger.info(`Worker graceful shutdown started (${signal})`);
   await Promise.allSettled(workers.map(worker => worker.close()));
-  await Promise.allSettled([closeQueues(), closeRedis(), mongoose.disconnect()]);
+  await Promise.allSettled([closeQueues(), closeRedis()]);
   process.exit(0);
 };
 

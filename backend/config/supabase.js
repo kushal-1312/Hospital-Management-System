@@ -1,0 +1,50 @@
+const { createClient } = require('@supabase/supabase-js');
+const logger = require('../utils/logger');
+
+const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder-project.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || 'placeholder-key';
+
+const isConfigured = Boolean(
+  process.env.SUPABASE_URL &&
+  !process.env.SUPABASE_URL.includes('placeholder') &&
+  !process.env.SUPABASE_URL.includes('your-project') &&
+  (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY) &&
+  !process.env.SUPABASE_SERVICE_ROLE_KEY?.includes('your-supabase')
+);
+
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+  },
+});
+
+let isConnected = false;
+
+const testConnection = async () => {
+  if (!isConfigured) {
+    logger.warn('⚠️ Supabase credentials not set or using placeholder in .env. Please update SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+    return false;
+  }
+  try {
+    const { error } = await supabase.from('users').select('id').limit(1);
+    if (error && error.code !== 'PGRST116') {
+      logger.warn(`Supabase connection note: ${error.message} (Code: ${error.code})`);
+    } else {
+      logger.info('✅ Supabase connected successfully');
+    }
+    isConnected = true;
+    return true;
+  } catch (err) {
+    logger.error(`Supabase connection failed: ${err.message}`);
+    isConnected = false;
+    return false;
+  }
+};
+
+module.exports = {
+  supabase,
+  testConnection,
+  isReady: () => isConnected,
+  isConfigured: () => isConfigured,
+};
