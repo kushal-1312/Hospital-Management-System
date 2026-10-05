@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const { getCookieOptions } = require('../config/cookies');
 
 // ─────────────────────────────────────────────────────────────
 // AUTHENTICATE — verify JWT, attach user to req
@@ -80,12 +81,10 @@ const generateCsrfToken = (req, res, next) => {
   if (!req.cookies?.csrfToken) {
     const token = crypto.randomBytes(32).toString('hex');
     // HttpOnly: false so JS can read it to include in header
-    res.cookie('csrfToken', token, {
+    res.cookie('csrfToken', token, getCookieOptions({
       httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    });
+    }));
   }
   next();
 };

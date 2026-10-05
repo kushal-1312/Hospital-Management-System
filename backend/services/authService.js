@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const logger = require('../utils/logger');
+const { getCookieOptions } = require('../config/cookies');
 
 // ── Generate JWT access token (short-lived) ───────────────────
 const generateAccessToken = (userId, role) => {
@@ -18,10 +19,8 @@ const generateRefreshToken = () => {
   return crypto.randomBytes(48).toString('hex');
 };
 
-const refreshCookieOptions = () => ({
+const refreshCookieOptions = () => getCookieOptions({
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict',
   path: '/api/auth',
   maxAge: (Number(process.env.REFRESH_COOKIE_DAYS) || 7) * 24 * 60 * 60 * 1000
 });

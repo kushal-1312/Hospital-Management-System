@@ -61,12 +61,20 @@ if (isVercel) {
   });
 }
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'same-site' },
+  xFrameOptions: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      frameAncestors: ["'none'"],
-      objectSrc: ["'none'"]
+      frameAncestors: process.env.ALLOWED_FRAME_ANCESTORS
+        ? process.env.ALLOWED_FRAME_ANCESTORS.split(',').map(s => s.trim())
+        : ['*'],
+      objectSrc: ["'none'"],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", 'https:', 'wss:', 'ws:']
     }
   },
   strictTransportSecurity: process.env.NODE_ENV === 'production'
@@ -114,6 +122,7 @@ app.use(generateCsrfToken);
 app.use(complianceAudit);
 
 app.use('/health', healthRoutes);
+app.use('/api/health', healthRoutes);
 app.get('/metrics', async (req, res) => {
   const expected = process.env.METRICS_TOKEN;
   if (process.env.NODE_ENV === 'production' && (!expected || req.get('authorization') !== `Bearer ${expected}`)) {
