@@ -11,6 +11,7 @@ const helmet = require('helmet');
 
 const connectDB = require('./config/database');
 const validateEnv = require('./config/validateEnv');
+validateEnv();
 const logger = require('./utils/logger');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { generateCsrfToken } = require('./middleware/auth');

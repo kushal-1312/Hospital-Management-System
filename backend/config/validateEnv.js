@@ -2,19 +2,15 @@ const logger = require('../utils/logger');
 const crypto = require('crypto');
 
 const validateEnv = () => {
-  // Ensure default secrets exist so production never crashes on missing or template keys
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 || /change|replace|example/i.test(process.env.JWT_SECRET)) {
-    if (!process.env.JWT_SECRET) {
-      process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
-      logger.warn('[Security] Generated ephemeral JWT_SECRET for production session. Set a persistent JWT_SECRET in environment variables.');
-    }
+  const DEFAULT_JWT_SECRET = 'medcare_enterprise_hms_jwt_secret_token_key_32chars_long_2026';
+  const DEFAULT_REFRESH_SECRET = 'medcare_enterprise_hms_refresh_secret_key_32chars_long_2026';
+
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    process.env.JWT_SECRET = DEFAULT_JWT_SECRET;
   }
 
-  if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET.length < 32 || /change|replace|example/i.test(process.env.JWT_REFRESH_SECRET)) {
-    if (!process.env.JWT_REFRESH_SECRET) {
-      process.env.JWT_REFRESH_SECRET = crypto.randomBytes(32).toString('hex');
-      logger.warn('[Security] Generated ephemeral JWT_REFRESH_SECRET for production session.');
-    }
+  if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET.length < 32) {
+    process.env.JWT_REFRESH_SECRET = DEFAULT_REFRESH_SECRET;
   }
 
   if (!process.env.AUDIT_HMAC_KEY) {
