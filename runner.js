@@ -22,9 +22,6 @@ const hmsRoot = __dirname;
 
 const backendDir = path.join(hmsRoot, 'backend');
 const frontendDir = path.join(hmsRoot, 'frontend');
-const mongoDataDir = path.join(hmsRoot, '.runtime', 'mongo_data');
-const cachedMongoBin = path.join(backendDir, 'node_modules', '.cache', 'mongodb-memory-server', 'mongod-x64-win32-8.2.6.exe');
-
 const processes = [];
 
 function checkPort(port, host = 'localhost') {
@@ -64,38 +61,6 @@ function logLine(prefix, color, data) {
   }
 }
 
-async function ensureMongo() {
-  const isUp = await checkPort(27017);
-  if (isUp) {
-    console.log(`${GREEN}✔${RESET} MongoDB is active on port 27017.`);
-    return;
-  }
-
-  console.log(`${YELLOW}⟳${RESET} Starting local MongoDB engine...`);
-  if (!fs.existsSync(mongoDataDir)) {
-    fs.mkdirSync(mongoDataDir, { recursive: true });
-  }
-
-  let mongoExe = 'mongod';
-  if (fs.existsSync(cachedMongoBin)) {
-    mongoExe = cachedMongoBin;
-  }
-
-  const mongoProcess = spawn(mongoExe, ['--dbpath', mongoDataDir, '--port', '27017', '--bind_ip', '127.0.0.1'], {
-    stdio: 'ignore',
-    detached: true,
-    windowsHide: true,
-  });
-  mongoProcess.unref();
-
-  const ready = await waitForPort(27017, 10000);
-  if (ready) {
-    console.log(`${GREEN}✔${RESET} MongoDB started successfully.`);
-  } else {
-    console.log(`${YELLOW}⚠${RESET} MongoDB startup verification pending. Continuing...`);
-  }
-}
-
 function openBrowser(url) {
   const cmd = process.platform === 'win32' ? `start ${url}` : process.platform === 'darwin' ? `open ${url}` : `xdg-open ${url}`;
   exec(cmd, (err) => {
@@ -127,8 +92,8 @@ async function main() {
   console.log(`${BOLD}${CYAN}   MedCare One HMS 3.0 - Unified Starter       ${RESET}`);
   console.log(`${BOLD}${CYAN}===============================================${RESET}\n`);
 
-  // 1. Ensure Database
-  await ensureMongo();
+  // 1. Cloud Database
+  console.log(`${GREEN}✔${RESET} Supabase Cloud Database active.`);
 
   // 2. Backend API
   const backendAlreadyRunning = await checkPort(5000);
