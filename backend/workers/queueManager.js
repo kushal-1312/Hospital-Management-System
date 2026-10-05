@@ -6,8 +6,14 @@ const connection = {
   host: process.env.REDIS_HOST || '127.0.0.1',
   port: Number(process.env.REDIS_PORT) || 6379,
   password: process.env.REDIS_PASSWORD || undefined,
-  maxRetriesPerRequest: 1,
-  enableOfflineQueue: false
+  maxRetriesPerRequest: null,
+  enableOfflineQueue: false,
+  retryStrategy: (times) => {
+    if (process.env.REDIS_REQUIRED !== 'true' && times > 2) {
+      return null; // Stop retrying in local dev if Redis is not installed
+    }
+    return Math.min(times * 1000, 5000);
+  }
 };
 
 const defaultJobOptions = {
@@ -21,6 +27,7 @@ let exportQueue = null;
 let emailQueue = null;
 let reportQueue = null;
 let cacheWarmQueue = null;
+const warnedQueues = new Set();
 
 const initQueues = () => {
   if (exportQueue) return true;
@@ -31,7 +38,12 @@ const initQueues = () => {
     reportQueue = new Queue('reports', options);
     cacheWarmQueue = new Queue('cache-warm', options);
     [exportQueue, emailQueue, reportQueue, cacheWarmQueue].forEach(queue => {
-      queue.on('error', error => logger.warn(`[Queue:${queue.name}] ${error.message}`));
+      queue.on('error', error => {
+        if (!warnedQueues.has(queue.name)) {
+          logger.warn(`[Queue:${queue.name}] Redis offline (${error.message}). Background jobs will process when Redis is running.`);
+          warnedQueues.add(queue.name);
+        }
+      });
     });
     logger.info('BullMQ job queues initialized');
     return true;

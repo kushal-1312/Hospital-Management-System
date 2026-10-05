@@ -104,6 +104,7 @@ async function main() {
     const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const backendProc = spawn(npmCmd, ['run', 'dev'], {
       cwd: backendDir,
+      shell: true,
       env: { ...process.env, FORCE_COLOR: 'true' },
     });
     processes.push(backendProc);
@@ -120,6 +121,7 @@ async function main() {
     const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const frontendProc = spawn(npmCmd, ['run', 'dev'], {
       cwd: frontendDir,
+      shell: true,
       env: { ...process.env, FORCE_COLOR: 'true' },
     });
     processes.push(frontendProc);
